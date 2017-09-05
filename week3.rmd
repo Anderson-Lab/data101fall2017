@@ -25,6 +25,12 @@ month_end_balances <- read_excel("~/data101fall2017/Fake+Data+and+Metadata+-+Fin
         "numeric", "numeric", "numeric"))
 
 month_end_balances$mortgage_flag = factor(month_end_balances$mortgage_flag )
+
+daily_interactions_WF <- read_excel("~/data101fall2017/Fake+Data+and+Metadata+-+Final+no+pass.xlsx", 
+    sheet = "Daily interactions with WF")
+
+daily_interactions_WF$Des1 = factor(daily_interactions_WF$Des1)
+levels(daily_interactions_WF$Des1)
 ```
 
 ## Explore the data
@@ -49,5 +55,18 @@ ggplot(month_end_balances, aes(age)) +
 
 ggplot(month_end_balances, aes(age)) +
   geom_density()
+
+ggplot(daily_interactions_WF, aes(Des1)) +
+  geom_histogram(stat="count") + coord_flip()
+
+want = c('Add Contact Event','Account Closed')
+
+ggplot(daily_interactions_WF[daily_interactions_WF$Des1 %in% want, ], aes(Des1)) +
+  geom_histogram(stat="count") + coord_flip()
+
+```
+
+```{r}
+which(daily_interactions_WF$Des1 %in% want)
 ```
 
