@@ -1,0 +1,53 @@
+---
+title: "Week3"
+author: "Paul Anderson"
+date: "9/5/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading the data
+
+```{r}
+library(readxl)
+month_end_balances <- read_excel("~/data101fall2017/Fake+Data+and+Metadata+-+Final+no+pass.xlsx", 
+    sheet = "Month end balances ", col_types = c("numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric"))
+
+month_end_balances$mortgage_flag = factor(month_end_balances$mortgage_flag )
+```
+
+## Explore the data
+
+```{r}
+#levels(month_end_balances$mortgage_flag)
+#mean(month_end_balances$age)
+summary(month_end_balances)
+```
+
+## Selecting data for a single person
+```{r}
+month_end_balances[month_end_balances$masked_id == 4,]
+```
+
+## Our first plot
+
+```{r}
+library(ggplot2)
+ggplot(month_end_balances, aes(age)) +
+  geom_histogram()
+
+ggplot(month_end_balances, aes(age)) +
+  geom_density()
+```
+
