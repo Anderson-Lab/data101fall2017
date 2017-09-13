@@ -1,0 +1,90 @@
+---
+title: "week4"
+author: "Paul Anderson"
+date: "9/13/2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Rundown
+
+The purpose of this week is to further develop your ideas for the competition and to explore the sample code provided in this markdown document. I have gone through your markdown documents from last week, and I the following list of general directions that people are taking:
+
+* Budgeting related - my only concern with this is to make sure it is analytics or data science based. Adding a prediction/classification/clustering/ranking component using the data. 
+* Rating loyalty
+* Dynamic links/recommendations on the web
+* Financial goal - again make sure you think ranking/prediction/classification/etc
+* Prob of taking/having a loan
+* Predicting what purchases a person will make for incentive purposes
+* Targetted rewards
+* Predicting type of consumer
+
+## Loading the data
+This is primarily from last week, but I'm including it here as well.
+
+```{r}
+library(readxl)
+month_end_balances <- read_excel("/usr/local/Learn2Mine-Main/galaxy-dist/lesson_datasets/Fake+Data+and+Metadata+-+Final+no+pass.xlsx", 
+    sheet = "Month end balances ", col_types = c("numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric"))
+
+month_end_balances$mortgage_flag = factor(month_end_balances$mortgage_flag )
+
+daily_interactions_WF <- read_excel("/usr/local/Learn2Mine-Main/galaxy-dist/lesson_datasets/Fake+Data+and+Metadata+-+Final+no+pass.xlsx", 
+    sheet = "Daily interactions with WF")
+
+daily_interactions_WF$Des1 = factor(daily_interactions_WF$Des1)
+levels(daily_interactions_WF$Des1)
+```
+
+## Some good ways to look at the data initially
+```{r}
+colnames(month_end_balances)
+
+print('Mortgage Flag')
+summary(month_end_balances$mortgage_flag)
+```
+
+## Example: Predicting whether someone will have a morgage
+
+Looks like there are 65 people with morgages in the dataset and 235 without. What if you wanted to predict who had a mortgage and who didn't? There are a lot of different algorithms we could use. One of the easiest to use that yields good results is called a random forest. For our purposes at the moment it is enough to know that random forests is an ensemble based machine learning algorithm that can be used to predict an outcome we are interested in. Let's see how it can work.
+
+```{r}
+library(randomForest)
+fit <- randomForest(as.factor(mortgage_flag) ~ branch_visit_cnt + online_bank_cnt + direct_phone_cnt + atm_withdrawls_cnt + direct_mail_cnt + age + direct_email_cnt + mobile_bank_cnt,
+                      data=month_end_balances, 
+                      importance=TRUE, 
+                      ntree=2000)
+```
+The above code creates our first model (fit). We had to specify the data and what we were prediction (mortgage_flag). We then had to give it what we want to use to predict mortgage flag after the ~. How do we see how we are doing? Welp. There is a convienent out of bag performance we can examine. For now we can use this metric as an estimate of performance.
+
+```{r}
+print(fit)
+```
+
+It says we got an out of bag estimate of error of approximately 8%. This means we are wrong 8% of the time. The confusion matrix below shows where we went wrong broken up by class (0 = no mortgage or 1 = mortgage). We always need to ask ourself if we are doing better than guessing. If we guessed that no one had a mortgage then we would get all 65 of those wrong, so we would have an error of 65/(65+235) = 22%. Awesome! With a couple of lines we have a decent model. You can play around with the parameters. 
+
+Now everyone loves a graph, so a cool thing about random forest is you can see how important a variable is to prediction:
+
+```{r}
+varImpPlot(fit)
+```
+
+This shows us that things like direct phone cnt and mobile bank cnt aren't that important for this prediction.
+
+### What about using this kind of prediction for your idea?
+Well. What you need to do is figure out exactly what you are trying to predict and how that would be useful for either the consumer or for wells fargo. But in terms of nuts and bolts. All you need is all the data you want in a single data frame and then you'll need to pick the column you want to predict. Think recommendation systems. 
+
+Here is my concrete suggestion for everyone in week 2 of the competition. Pick something from the data that is related to your idea and try to predict it :) You will probably have to do some munging of the data to get exactly what you want, but I'll be here on Facebook to help you out.
