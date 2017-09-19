@@ -1,0 +1,262 @@
+---
+title: "week5"
+author: "Paul Anderson"
+date: "9/18/2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Rundown
+
+Alright gang, looks like people are starting to get a better handle on the data. There really aren't any shortcuts here. It just takes time. OAKS is currently being a real pain right now, so I've downloaded your week 4 reports and gone through them and created notes. Here is a rundown on some of the things I think will help you reach your goals:
+
+* Regression - some of you want to predict something that is continuous. Easy to do this with R, see example below.
+* Clustering - other people seem to be thinking along the lines of clustering the data somehow.
+* Dates - other people really want to use the dates
+* More classification - I'll show another classification algorithm as well
+* Budgeting - a lot of people are thinking budgeting apps still which is cool, but let's think about how we can break the mold of traditional budgeting apps that break things up into house, fast food, etc. How about breaking things up based on their patterns? Early in the month? Consistent? Similar to other users? Variable categories? Any shifts in these patterns over time could indicate...?
+* Correlation
+* Merging data
+
+## Loading the data
+This is primarily from last week, but I'm including it here as well.
+
+```{r}
+library(readxl)
+month_end_balances <- as.data.frame(read_excel("/usr/local/Learn2Mine-Main/galaxy-dist/lesson_datasets/Fake+Data+and+Metadata+-+Final+no+pass.xlsx", 
+    sheet = "Month end balances ", col_types = c("numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric")))
+
+month_end_balances$mortgage_flag = factor(month_end_balances$mortgage_flag )
+
+daily_interactions_WF <- read_excel("/usr/local/Learn2Mine-Main/galaxy-dist/lesson_datasets/Fake+Data+and+Metadata+-+Final+no+pass.xlsx", 
+    sheet = "Daily interactions with WF")
+
+daily_interactions_WF$Des1 = factor(daily_interactions_WF$Des1)
+levels(daily_interactions_WF$Des1)
+```
+
+## Example: Regression
+
+```{r}
+library(randomForest)
+fit <- randomForest(age ~ branch_visit_cnt + online_bank_cnt + direct_phone_cnt + atm_withdrawls_cnt + direct_mail_cnt + mortgage_flag + direct_email_cnt + mobile_bank_cnt,
+                      data=month_end_balances, 
+                      importance=TRUE, 
+                      ntree=2000)
+print(fit)
+```
+
+So with a simple change, random forest can also be used for regression. Now what is reported is percent variable explained which we want to be high (near 100%) and mean of squared residuals (error term) which we want to be small. Looks like predicting an age from the data I have is a little tricky as expected. 
+
+Now everyone loves a graph, so a cool thing about random forest is you can see how important a variable is to prediction:
+
+```{r}
+varImpPlot(fit)
+```
+
+But this shows us that branch visit count is a good indicator, which supports the trend of younger people using banking differently. Can you think of other ways to find trends for wells fargo that might be unexpected?
+
+## Clustering
+There is a lot of different ways to cluster. A quick google of clustering and R gives tons of results (e.g., https://www.stat.berkeley.edu/~s133/Cluster2a.html). I'm going to show you some hierarchical clustering in R which can create a cool graph.
+
+Before we can do any of that we need to make select the data that we want and we need to clean it up. Specifically, we need to pick only numeric data and we need to scale it so it is in the same range.
+```{r}
+data_for_cluster = as.matrix(month_end_balances[,c('age','branch_visit_cnt','online_bank_cnt','direct_phone_cnt','atm_withdrawls_cnt','direct_mail_cnt','mortgage_flag','direct_email_cnt','mobile_bank_cnt')])
+
+data_for_cluster = apply(data_for_cluster,2,as.numeric)
+means = apply(data_for_cluster,2,mean)
+sds = apply(data_for_cluster,2,sd)
+data_for_cluster = scale(data_for_cluster,center=means,scale=sds)
+```
+
+Now we can compute the distances between the rows and then cluster and visualize.
+```{r}
+data_for_cluster.dist = dist(data_for_cluster)
+data_for_cluster.hclust = hclust(data_for_cluster.dist)
+plot(data_for_cluster.hclust,labels=month_end_balances$masked_id,main='Default from hclust')
+```
+
+It is a little hard to tell what exact labels there are for each group, but you can see that there are clear groups of people in the dataset. It is confusing because there are many people in our dataset. One could dig into what these clusters of people are and try to find meaning in the clustering. 
+
+Let's say you want to break this into 4 groups:
+```{r}
+groups.4 = cutree(data_for_cluster.hclust,4)
+table(groups.4)
+```
+
+There are 3 smallish groups and one large group. If you want to figure out who is in one of the smaller groups:
+```{r}
+month_end_balances$masked_id[groups.4 == 2] # the 2 is the group number
+```
+
+So this pointed out to me that we actual have multiple entries for the same user, so we can group our data by that which is an important thing to show everyone, so I'll give it it's own heading.
+
+### Grouping/Aggregating Data
+In order to do this we need to add the column with the labels back to the data:
+```{r}
+data_for_cluster_with_ids = as.data.frame(month_end_balances[,c('age','branch_visit_cnt','online_bank_cnt','direct_phone_cnt','atm_withdrawls_cnt','direct_mail_cnt','mortgage_flag','direct_email_cnt','masked_id')])
+
+data_for_cluster_agg = aggregate(. ~ masked_id, data_for_cluster_with_ids, mean)
+
+head(data_for_cluster_agg)
+```
+
+Much better. Now we have 1 entry per person and we can do our clustering again.
+
+```{r}
+orig_data_for_cluster_agg = data_for_cluster_agg
+data_for_cluster_agg = apply(data_for_cluster_agg[,-1],2,as.numeric) # Remove the masked_id while we are doing this step
+means = apply(data_for_cluster_agg,2,mean)
+sds = apply(data_for_cluster_agg,2,sd)
+data_for_cluster_agg = scale(data_for_cluster_agg,center=means,scale=sds)
+
+data_for_cluster_agg.dist = dist(data_for_cluster_agg) # Take out the masked_id from the cluster
+data_for_cluster_agg.hclust = hclust(data_for_cluster_agg.dist)
+plot(data_for_cluster_agg.hclust,labels=orig_data_for_cluster_agg$masked_id,main='Default from hclust')
+
+```
+
+Much better! Now let's cut this into 5 groups:
+
+```{r}
+groups.5 = cutree(data_for_cluster_agg.hclust,5)
+table(groups.5)
+```
+
+If you want to figure out who is in group 2:
+```{r}
+orig_data_for_cluster_agg$masked_id[groups.5 == 2] # the 2 is the group number
+```
+
+And those are the people who are in group 5. You could plot the values of those people, etc...
+
+Clustering is definitely a great way to explore the data, but for now I'm going to move onto one of the othe topics.
+
+## Dates
+Let's take a look at one of the columns:
+
+```{r}
+head(month_end_balances$asof_yyyymm)
+```
+
+I want to use another date packages, so to install this or any package you want use:
+```{r}
+# install.packages("lubridate") # uncomment to install package
+```
+
+
+Those are currently treated as just numbers. One of our problems is we lack a day of the month for this column. We can add this in:
+
+```{r}
+asof_yyyymmdd = paste(as.character(month_end_balances$asof_yyyymm),"01",sep="")
+```
+
+
+```{r}
+library(lubridate)
+
+month_end_balances$asof_yyyymm_asdate = ymd(asof_yyyymmdd)
+head(month_end_balances$asof_yyyymm_asdate)
+```
+
+Then you can ask things like:
+```{r}
+month(month_end_balances$asof_yyyymm_asdate)
+```
+
+## Correlation
+As I mentioned on Facebook, correlation is really easy and provides a cool visual. I'm going to use our clean data we used for clustering as correlation only makes sense for numeric data.
+
+```{r}
+# install.packages('corrplot') # uncomment to install package
+```
+
+
+```{r}
+library(corrplot)
+M <- cor(data_for_cluster_agg)
+corrplot(M, method="circle")
+```
+
+Bigger circles are more correlation. This is a great tool for you to use to explore the data and get a feel for thing.
+
+## Merging data
+
+OK. We need to get to how to combine these different sheets. The good news is everything seems to have a masked_id so that is how we will do it. The problem as we've seen above is that there are multiple entries for each user in a sheet. This means we'll need to aggregate before we merge, but that's easy :) I'll copy duplicate code down here, so you have it all in one place.
+
+```{r}
+library(readxl)
+month_end_balances <- as.data.frame(read_excel("/usr/local/Learn2Mine-Main/galaxy-dist/lesson_datasets/Fake+Data+and+Metadata+-+Final+no+pass.xlsx", 
+    sheet = "Month end balances ", col_types = c("numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric")))
+
+month_end_balances$mortgage_flag = factor(month_end_balances$mortgage_flag )
+
+daily_interactions_WF <- as.data.frame(read_excel("/usr/local/Learn2Mine-Main/galaxy-dist/lesson_datasets/Fake+Data+and+Metadata+-+Final+no+pass.xlsx", 
+    sheet = "Daily interactions with WF"))
+```
+
+Just take a look at what we have:
+```{r}
+head(daily_interactions_WF$masked_id)
+head(month_end_balances$masked_id)
+```
+
+Duplicates for both, so we need aggregation. 
+
+```{r}
+summary(daily_interactions_WF)
+summary(month_end_balances)
+```
+
+Now we can ask a more specific question. What if we wanted to add the most common Des1 to the other numeric data from month_end_balances. First aggregation:
+
+```{r}
+month_end_balances_4merge = as.data.frame(month_end_balances[,c('age','branch_visit_cnt','online_bank_cnt','direct_phone_cnt','atm_withdrawls_cnt','direct_mail_cnt','mortgage_flag','direct_email_cnt','masked_id')])
+
+month_end_balances_4merge = aggregate(. ~ masked_id, month_end_balances_4merge, mean)
+
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+daily_interactions_WF_4merge = aggregate(. ~ masked_id, daily_interactions_WF,Mode)
+
+head(month_end_balances_4merge)
+head(daily_interactions_WF_4merge)
+```
+
+Now we are ready to merge them together because each masked_id is only once :)
+
+```{r}
+merged_data <- merge(month_end_balances_4merge,daily_interactions_WF_4merge,by="masked_id")
+summary(merged_data)
+```
+
+Done! We can look at a single user:
+```{r}
+merged_data[1,]
+```
+
+So the only real question when it comes to merge is how do you aggregate or summarize the data so you can match things up one to one.
