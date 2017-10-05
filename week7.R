@@ -1,6 +1,6 @@
 library(readxl)
 
-Fake_Data_and_Metadata_Final_no_pass <- read_excel("~/Fake+Data+and+Metadata+-+Final+no+pass.xlsx", 
+Fake_Data_and_Metadata_Final_no_pass <- read_excel("~/data101fall2017/Fake+Data+and+Metadata+-+Final+no+pass.xlsx", 
                                                    sheet = "Daily use of a WF credit card ")
 
 twopersondf = Fake_Data_and_Metadata_Final_no_pass[Fake_Data_and_Metadata_Final_no_pass$masked_id==1 | Fake_Data_and_Metadata_Final_no_pass$masked_id==2,]

@@ -1,7 +1,7 @@
 ---
 title: "week7"
 author: "Paul Anderson"
-date: "10/3/2017"
+date: "10/5/2017"
 output: html_document
 ---
 
@@ -9,8 +9,282 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Cast
+## Reading in the data
+```{r}
+library(readxl)
+
+Fake_Data_and_Metadata_Final_no_pass <- read_excel("~/data101fall2017/Fake+Data+and+Metadata+-+Final+no+pass.xlsx", 
+                                                   sheet = "Daily use of a WF credit card ")
+
+```
+
+## How to summarize and pivot data
+
+In this example, we use the cast function that is part of the reshape package. I specifically tell it to pivot using masked_id and Des1 using the Payment field as the value. I then had to tell it to aggregate using the mean function. 
+
+```{r}
+library(reshape)
+reshaped_df = cast(Fake_Data_and_Metadata_Final_no_pass, masked_id ~ Des1, value = 'Payment', fun.aggregate=sum)
+# when we do this it is a good idea to fix the names of the columns
+tidy.name.vector <- make.names(colnames(reshaped_df), unique=TRUE)
+colnames(reshaped_df) = tidy.name.vector
+```
+
+Here I just make sure that we don't have any missing values, or more specifically that missing values are set to 0 because there was nothing spent in this category.
+```{r}
+reshaped_df[is.na(reshaped_df)] = 0
+```
+
+Take a gander at the data
+```{r}
+head(reshaped_df)
+```
+
+One thing that bugs me and causes some headaches a little later is that masked_id is a column when it should more accurately be called the row name. Easy to fix.
+
+```{r}
+rownames(reshaped_df) = reshaped_df$masked_id
+reshaped_df = reshaped_df[,-1] # Remove the first column
+head(reshaped_df)
+```
+
+## Normalizing the data
+Easier to think in terms of percentage of expenses
+
+```{r}
+reshaped_df_norm = t(apply(reshaped_df, 1, function(x) x/sum(x))) # divide every row by the sum of that row
+# this returns a matrix without column names, so we need to add them back and change back to a data frame
+colnames(reshaped_df_norm) = colnames(reshaped_df)
+reshaped_df_norm = as.data.frame(reshaped_df_norm)
+```
+
+
+## Now we can do some predictions
+```{r}
+library(randomForest)
+fit <- randomForest(ALCOHOL ~ .,
+                    data=reshaped_df_norm, 
+                    importance=TRUE, 
+                    ntree=2000)
+print(fit)
+
+```
+
+You need to pay attention to the percent variance explained. We want this number to be positive and high. Negative is very very bad. Showing that we should have just guessed.
+
+## All the predictions!
+
 
 ```{r}
 
+fits = list() # Store the results in a list for examination later
+for (i in 1:ncol(reshaped_df_norm)) {
+  fits[[i]] <- randomForest(reshaped_df_norm[,i] ~ .,
+                      data=reshaped_df_norm, 
+                      importance=TRUE, 
+                      ntree=2000)
+}
 ```
+
+If you want to grab all of the percent variance explained for each prediction:
+```{r}
+perVarExp = c()
+for (i in 1:ncol(reshaped_df_norm)) {
+  perVarExp[i] = fits[[i]]$rsq[length(fits[[i]]$rsq)]
+}
+```
+
+Now we can visualize this:
+```{r}
+inxs = order(perVarExp)
+mydata = data.frame(perVarExp = perVarExp[inxs], var_names=factor(colnames(reshaped_df_norm)[inxs],ordered = T))
+levels(mydata$var_names) = colnames(reshaped_df_norm)[inxs]
+library(plotly)
+
+p <- plot_ly(
+  x = perVarExp[inxs],
+  y = factor(colnames(reshaped_df_norm)[inxs],levels = colnames(reshaped_df_norm)[inxs]),
+  name = "Percent Variance Explained",
+  type = "bar"
+)
+
+p
+
+```
+
+## What if you wanted to zero in on a specific user?
+
+```{r}
+masked_id = 1
+row_id = which(rownames(reshaped_df_norm)==masked_id)
+train.data = reshaped_df_norm[-row_id,]
+# Remove that user from the models
+masked_id_fits = list() # Store the results in a list for examination later
+for (i in 1:ncol(reshaped_df_norm)) {
+  masked_id_fits[[i]] <- randomForest(train.data[,i] ~ .,
+                      data=train.data,
+                      importance=TRUE, 
+                      ntree=2000)
+}
+```
+
+# Now let's calculate for that user where we made the worst predictions
+```{r}
+predictions = c()
+for (i in 1:ncol(reshaped_df_norm)) {
+  predictions[i] = predict(masked_id_fits[[i]],reshaped_df_norm[row_id,])
+}
+errors = abs(predictions - as.vector(as.matrix(reshaped_df_norm[row_id,])))
+```
+
+Now we can visualize this:
+```{r}
+inxs = order(errors)
+library(plotly)
+
+p <- plot_ly(
+  x = 100*as.vector(errors[inxs]),
+  y = factor(colnames(reshaped_df_norm)[inxs],levels = colnames(reshaped_df_norm)[inxs]),
+  name = "Errors",
+  type = "bar"
+)
+
+p
+
+```
+
+## Looking into the links
+```{r}
+library(readxl)
+traffic <- read_excel("~/data101fall2017/Fake+Data+and+Metadata+-+Final+no+pass.xlsx", 
+    sheet = "Daily WellsFargo.com traffic")
+
+# Fix the date
+traffic$date = as.Date(traffic$Date,"%m%d%Y")
+```
+
+The problem with the links is there is a different number of sublinks to deal with. Let's clean it up by removing trailing / and by finding out how many slashes there are.
+```{r}
+max_slashes = 0
+for (i in 1:nrow(traffic)) {
+  traffic[i,]$wf_page = gsub('/$', '', traffic[i,]$wf_page)
+  fields = strsplit(traffic[i,]$wf_page,"/")[[1]]
+  if (max_slashes < length(fields)) {
+    max_slashes = length(fields)
+  }
+}
+```
+
+I found that the maximum slashes was 3, so I can make url1, url2, and url3
+
+```{r}
+traffic$url1 = ""
+traffic$url2 = ""
+traffic$url3 = ""
+```
+
+Then I can actually fill it up!
+```{r}
+for (i in 1:nrow(traffic)) {
+  fields = strsplit(traffic[i,]$wf_page,"/")[[1]]
+  traffic$url1[i] = fields[1]
+  # If conditions are to make sure we have enough slashes
+  if (length(fields) >= 2) {
+    traffic$url2[i] = fields[2]
+  }
+  if (length(fields) >= 3) {
+    traffic$url3[i] = fields[3]
+  }
+}
+```
+
+Take a look:
+```{r}
+head(traffic)
+```
+
+Now we can use cast to pivot again:
+```{r}
+library(reshape)
+traffic$value = 1
+traffic_cast = cast(traffic, masked_id ~ url1, length)
+rownames(traffic_cast) = traffic_cast$masked_id
+traffic_cast = traffic_cast[,-1]
+traffic_cast[is.na(traffic_cast)] = 0
+tidy.name.vector <- make.names(colnames(traffic_cast), unique=TRUE)
+colnames(traffic_cast) = tidy.name.vector
+```
+
+Now let's see if there are any correlations!
+```{r}
+library(corrplot)
+M = cor(traffic_cast)
+corrplot(M)
+```
+
+Looks like 9 and 2 are coorelated for example. What are those?
+```{r}
+colnames(traffic_cast)[c(9,2)]
+```
+
+How do we formalize this even more?
+
+### Market Basket Analysis
+http://www.salemmarafi.com/code/market-basket-analysis-with-r/
+
+When the dataset is in single form it means that each record represents one single item and each item contains a transaction id. We need to figure out what our transaction id is and then pivot based on that. I don't think it is just masked_id. I am going to say it is masked_id plus the date.
+
+```{r}
+library(reshape)
+traffic$value = 1
+traffic_cast2 = cast(traffic, masked_id + date ~ url1, length)
+transactionID = paste(traffic_cast2$masked_id,traffic_cast2$date)
+# Remove unnecessary columns
+traffic_cast2 = traffic_cast2[,-which(colnames(traffic_cast2) == "date")]
+traffic_cast2 = traffic_cast2[,-which(colnames(traffic_cast2) == "masked_id")]
+traffic_cast2[is.na(traffic_cast2)] = 0
+tidy.name.vector <- make.names(colnames(traffic_cast2), unique=TRUE)
+colnames(traffic_cast2) = tidy.name.vector
+head(traffic_cast2)
+data=""
+# Turn into transaction file
+inxs = which(traffic_cast2[1,] > 0);
+row = colnames(traffic_cast2)[inxs[1]]
+for (j in 2:length(inxs)) {
+  row = paste0(row,",",colnames(traffic_cast2)[inxs[j]])
+}
+for (i in 2:nrow(traffic_cast2)) {
+  inxs = which(traffic_cast2[i,] > 0)
+  if (length(inxs) > 0) {
+    row = colnames(traffic_cast2)[inxs[1]]
+    if (length(inxs) > 1) {
+      for (j in 2:length(inxs)) {
+        row = paste0(row,",",colnames(traffic_cast2)[inxs[j]])
+      }
+    }
+    data <- paste0(data,"\n",row)
+  }
+}
+write(data, file = "transactions.csv")
+```
+
+Now we can read in the data
+```{r}
+# Load the libraries
+library(arules)
+library(arulesViz)
+library(datasets)
+
+transactions = read.transactions('transactions.csv', format = "basket", sep = ",",rm.duplicates=T,col=ncol(traffic_cast2))
+```
+
+```{r}
+itemFrequencyPlot(transactions,topN=20,type="absolute")
+```
+```{r}
+rules <- apriori(transactions, parameter = list(supp = 0.001, conf = 0.3))
+# Show the top 5 rules, but only 2 digits
+options(digits=2)
+inspect(rules)
+```
+
