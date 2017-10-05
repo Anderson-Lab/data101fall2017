@@ -288,3 +288,29 @@ options(digits=2)
 inspect(rules)
 ```
 
+
+## Putting it together
+```{r}
+library(readxl)
+month_end_balances <- as.data.frame(read_excel("/usr/local/Learn2Mine-Main/galaxy-dist/lesson_datasets/Fake+Data+and+Metadata+-+Final+no+pass.xlsx", 
+    sheet = "Month end balances ", col_types = c("numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric")))
+
+first_sheet = as.data.frame(month_end_balances[,c('age','branch_visit_cnt','online_bank_cnt','direct_phone_cnt','atm_withdrawls_cnt','direct_mail_cnt','mortgage_flag','direct_email_cnt','masked_id')])
+
+first_sheet_agg = aggregate(. ~ masked_id, first_sheet, mean)
+
+head(first_sheet_agg)
+
+traffic_cast_merge = traffic_cast
+traffic_cast_merge$masked_id = rownames(traffic_cast)
+merged=merge(first_sheet_agg,traffic_cast_merge,by=masked_id)
+```
+
