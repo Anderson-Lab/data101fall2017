@@ -1,0 +1,146 @@
+---
+title: "week8"
+author: "Paul Anderson"
+date: "10/9/2017"
+output: html_document
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This R Markdown document is made interactive using Shiny. Unlike the more traditional workflow of creating static reports, you can now create documents that allow your readers to change the assumptions underlying your analysis and see the results immediately. 
+
+To learn more, see [Interactive Documents](http://rmarkdown.rstudio.com/authoring_shiny.html).
+
+## Signing up for an account
+Because we are using a server behind a Firewall, you'll need to publish your apps in order to see them. Not a problem. It's all free and easy to use. 
+
+[Instructions to get things published](https://shiny.rstudio.com/articles/shinyapps.html)
+
+Once you create your account, you'll want to run code that looks like the following but with your own values of course:
+
+rsconnect::setAccountInfo(name='pauleanderson',
+ 		  token='31AD5F9D543A5763DF9291D1FA4F991C',
+		  secret='<SECRET>')
+
+## Generating a graph for a user
+## Getting the data ready
+
+This is all copied from the previous markdown.
+```{r context="data"}
+library(readxl)
+library(randomForest)
+
+Fake_Data_and_Metadata_Final_no_pass <- read_excel("Fake+Data+and+Metadata+-+Final+no+pass.xlsx", 
+                                                   sheet = "Daily use of a WF credit card ")
+
+library(reshape)
+reshaped_df = cast(Fake_Data_and_Metadata_Final_no_pass, masked_id ~ Des1, value = 'Payment', fun.aggregate=sum)
+# when we do this it is a good idea to fix the names of the columns
+tidy.name.vector <- make.names(colnames(reshaped_df), unique=TRUE)
+colnames(reshaped_df) = tidy.name.vector
+
+reshaped_df[is.na(reshaped_df)] = 0
+rownames(reshaped_df) = reshaped_df$masked_id
+reshaped_df = reshaped_df[,-1] # Remove the first column
+
+reshaped_df_norm = t(apply(reshaped_df, 1, function(x) x/sum(x))) # divide every row by the sum of that row
+# this returns a matrix without column names, so we need to add them back and change back to a data frame
+colnames(reshaped_df_norm) = colnames(reshaped_df)
+reshaped_df_norm = as.data.frame(reshaped_df_norm)
+
+# Pre-compute everything because we want to go fast
+masked_ids = c(1,2,3)
+
+results = list()
+row_ids = list()
+for (j in 1:length(masked_ids)) {
+  masked_id = masked_ids[j]
+  row_id = which(rownames(reshaped_df_norm)==masked_id)
+  train.data = reshaped_df_norm[-row_id,]
+  # Remove that user from the models
+  masked_id_fits = list() # Store the results in a list for examination later
+  for (i in 1:ncol(reshaped_df_norm)) {
+    masked_id_fits[[i]] <- randomForest(train.data[,i] ~ .,
+                        data=train.data,
+                        importance=TRUE, 
+                        ntree=2000)
+  }
+  # This is where we save things for later
+  results[[j]] = masked_id_fits
+  row_ids[[j]] = row_id
+}
+```
+
+
+## Inputs and Outputs
+
+You can embed Shiny inputs and outputs in your document. Outputs are automatically updated whenever inputs change.  This demonstrates how a standard R plot can be made interactive by wrapping it in the Shiny `renderPlot` function. The `selectInput` and `sliderInput` functions create the input widgets used to drive the plot.
+
+```{r context="render", echo=FALSE}
+library(plotly)
+
+inputPanel(
+  selectInput("masked_id", label = "Masked ID:",
+              choices = masked_ids, selected = masked_ids[1])
+)
+plotOutput("distPlot")
+
+plotlyOutput("barPlot")
+
+```
+
+```{r context="server", echo=FALSE}
+library(randomForest)
+
+output$distPlot <- renderPlot({
+  masked_id = input$masked_id
+  j = which(masked_ids == masked_id)
+  row_id = row_ids[[j]]
+  masked_id_fits = results[[j]]
+  
+  predictions = c()
+  for (i in 1:ncol(reshaped_df_norm)) {
+    predictions[i] = predict(masked_id_fits[[i]],reshaped_df_norm[row_id,])
+  }
+  errors = abs(predictions - as.vector(as.matrix(reshaped_df_norm[row_id,])))
+  
+  inxs = order(errors)
+  
+  hist(as.vector(errors[inxs]))
+})
+
+library(plotly)
+output$barPlot <- renderPlotly({
+  masked_id = input$masked_id
+  j = which(masked_ids == masked_id)
+  row_id = row_ids[[j]]
+  masked_id_fits = results[[j]]
+  
+  predictions = c()
+  for (i in 1:ncol(reshaped_df_norm)) {
+    predictions[i] = predict(masked_id_fits[[i]],reshaped_df_norm[row_id,])
+  }
+  errors = abs(predictions - as.vector(as.matrix(reshaped_df_norm[row_id,])))
+  
+  inxs = order(errors)
+  
+  plot_ly(
+    x = 100*as.vector(errors[inxs]),
+    y = factor(colnames(reshaped_df_norm)[inxs],levels = colnames(reshaped_df_norm)[inxs]),
+    name = "Errors",
+    type = "bar"
+  )
+})
+```
+
+## Running this example
+You can execute the following:
+
+rmarkdown::run("week8.Rmd", shiny_args=list(host="0.0.0.0",port=6000))
+
+BUT you must change the port number to the one I gave your group, and then go to:
+
+https://freyja.cs.cofc.edu/6000

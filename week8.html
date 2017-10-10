@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8" />
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="author" content="Paul Anderson" />
+
+
+<title>week8</title>
+
+
+<style type="text/css">code{white-space: pre;}</style>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+<style type="text/css">
+h1 {
+  font-size: 34px;
+}
+h1.title {
+  font-size: 38px;
+}
+h2 {
+  font-size: 30px;
+}
+h3 {
+  font-size: 24px;
+}
+h4 {
+  font-size: 18px;
+}
+h5 {
+  font-size: 16px;
+}
+h6 {
+  font-size: 12px;
+}
+.table th:not([align]) {
+  text-align: left;
+}
+</style>
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img {
+  max-width:100%;
+  height: auto;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+</style>
+
+
+
+<div class="container-fluid main-container">
+
+<!-- tabsets -->
+<script>
+$(document).ready(function () {
+  window.buildTabsets("section-TOC");
+});
+</script>
+
+<!-- code folding -->
+
+
+
+
+
+
+<div class="fluid-row" id="section-header">
+
+
+
+<h1 class="title toc-ignore">week8</h1>
+<h4 class="author"><em>Paul Anderson</em></h4>
+<h4 class="date"><em>10/9/2017</em></h4>
+
+</div>
+
+
+<p>This R Markdown document is made interactive using Shiny. Unlike the more traditional workflow of creating static reports, you can now create documents that allow your readers to change the assumptions underlying your analysis and see the results immediately.</p>
+<p>To learn more, see <a href="http://rmarkdown.rstudio.com/authoring_shiny.html">Interactive Documents</a>.</p>
+<div id="section-signing-up-for-an-account" class="section level2">
+<h2>Signing up for an account</h2>
+<p>Because we are using a server behind a Firewall, you’ll need to publish your apps in order to see them. Not a problem. It’s all free and easy to use.</p>
+<p><a href="https://shiny.rstudio.com/articles/shinyapps.html">Instructions to get things published</a></p>
+<p>Once you create your account, you’ll want to run code that looks like the following but with your own values of course:</p>
+<p>rsconnect::setAccountInfo(name=‘pauleanderson’, token=‘31AD5F9D543A5763DF9291D1FA4F991C’, secret=‘<SECRET>’)</p>
+</div>
+<div id="section-generating-a-graph-for-a-user" class="section level2">
+<h2>Generating a graph for a user</h2>
+</div>
+<div id="section-getting-the-data-ready" class="section level2">
+<h2>Getting the data ready</h2>
+<p>This is all copied from the previous markdown.</p>
+<pre class="r"><code>library(readxl)
+library(randomForest)
+
+Fake_Data_and_Metadata_Final_no_pass &lt;- read_excel(&quot;Fake+Data+and+Metadata+-+Final+no+pass.xlsx&quot;, 
+                                                   sheet = &quot;Daily use of a WF credit card &quot;)
+
+library(reshape)
+reshaped_df = cast(Fake_Data_and_Metadata_Final_no_pass, masked_id ~ Des1, value = &#39;Payment&#39;, fun.aggregate=sum)
+# when we do this it is a good idea to fix the names of the columns
+tidy.name.vector &lt;- make.names(colnames(reshaped_df), unique=TRUE)
+colnames(reshaped_df) = tidy.name.vector
+
+reshaped_df[is.na(reshaped_df)] = 0
+rownames(reshaped_df) = reshaped_df$masked_id
+reshaped_df = reshaped_df[,-1] # Remove the first column
+
+reshaped_df_norm = t(apply(reshaped_df, 1, function(x) x/sum(x))) # divide every row by the sum of that row
+# this returns a matrix without column names, so we need to add them back and change back to a data frame
+colnames(reshaped_df_norm) = colnames(reshaped_df)
+reshaped_df_norm = as.data.frame(reshaped_df_norm)
+
+# Pre-compute everything because we want to go fast
+masked_ids = c(1,2,3)
+
+results = list()
+row_ids = list()
+for (j in 1:length(masked_ids)) {
+  masked_id = masked_ids[j]
+  row_id = which(rownames(reshaped_df_norm)==masked_id)
+  train.data = reshaped_df_norm[-row_id,]
+  # Remove that user from the models
+  masked_id_fits = list() # Store the results in a list for examination later
+  for (i in 1:ncol(reshaped_df_norm)) {
+    masked_id_fits[[i]] &lt;- randomForest(train.data[,i] ~ .,
+                        data=train.data,
+                        importance=TRUE, 
+                        ntree=2000)
+  }
+  # This is where we save things for later
+  results[[j]] = masked_id_fits
+  row_ids[[j]] = row_id
+}</code></pre>
+</div>
+<div id="section-inputs-and-outputs" class="section level2">
+<h2>Inputs and Outputs</h2>
+<p>You can embed Shiny inputs and outputs in your document. Outputs are automatically updated whenever inputs change. This demonstrates how a standard R plot can be made interactive by wrapping it in the Shiny <code>renderPlot</code> function. The <code>selectInput</code> and <code>sliderInput</code> functions create the input widgets used to drive the plot.</p>
+<p><div class="shiny-input-panel">
+<div class="shiny-flow-layout">
+<div>
+<div class="form-group shiny-input-container">
+<label class="control-label" for="masked_id">Masked ID:</label>
+<div>
+<select id="masked_id"><option value="1" selected>1</option>
+<option value="2">2</option>
+<option value="3">3</option></select>
+<script type="application/json" data-for="masked_id" data-nonempty="">{}</script>
+</div>
+</div>
+</div>
+</div>
+</div><div id="distPlot" class="shiny-plot-output" style="width: 100% ; height: 400px"></div><div id="barPlot" style="width:100%; height:400px; " class="plotly html-widget html-widget-output"></div></p>
+</div>
+<div id="section-running-this-example" class="section level2">
+<h2>Running this example</h2>
+<p>You can execute the following:</p>
+<p>rmarkdown::run(“week8.Rmd”, shiny_args=list(host=“0.0.0.0”,port=6000))</p>
+<p>BUT you must change the port number to the one I gave your group, and then go to:</p>
+<a href="https://freyja.cs.cofc.edu/6000" class="uri">https://freyja.cs.cofc.edu/6000</a> 
+<script type="application/shiny-prerendered" data-context="server-start">
+knitr::opts_chunk$set(echo = TRUE)
+</script>
+ 
+<script type="application/shiny-prerendered" data-context="data">
+library(readxl)
+library(randomForest)
+
+Fake_Data_and_Metadata_Final_no_pass <- read_excel("Fake+Data+and+Metadata+-+Final+no+pass.xlsx", 
+                                                   sheet = "Daily use of a WF credit card ")
+
+library(reshape)
+reshaped_df = cast(Fake_Data_and_Metadata_Final_no_pass, masked_id ~ Des1, value = 'Payment', fun.aggregate=sum)
+# when we do this it is a good idea to fix the names of the columns
+tidy.name.vector <- make.names(colnames(reshaped_df), unique=TRUE)
+colnames(reshaped_df) = tidy.name.vector
+
+reshaped_df[is.na(reshaped_df)] = 0
+rownames(reshaped_df) = reshaped_df$masked_id
+reshaped_df = reshaped_df[,-1] # Remove the first column
+
+reshaped_df_norm = t(apply(reshaped_df, 1, function(x) x/sum(x))) # divide every row by the sum of that row
+# this returns a matrix without column names, so we need to add them back and change back to a data frame
+colnames(reshaped_df_norm) = colnames(reshaped_df)
+reshaped_df_norm = as.data.frame(reshaped_df_norm)
+
+# Pre-compute everything because we want to go fast
+masked_ids = c(1,2,3)
+
+results = list()
+row_ids = list()
+for (j in 1:length(masked_ids)) {
+  masked_id = masked_ids[j]
+  row_id = which(rownames(reshaped_df_norm)==masked_id)
+  train.data = reshaped_df_norm[-row_id,]
+  # Remove that user from the models
+  masked_id_fits = list() # Store the results in a list for examination later
+  for (i in 1:ncol(reshaped_df_norm)) {
+    masked_id_fits[[i]] <- randomForest(train.data[,i] ~ .,
+                        data=train.data,
+                        importance=TRUE, 
+                        ntree=2000)
+  }
+  # This is where we save things for later
+  results[[j]] = masked_id_fits
+  row_ids[[j]] = row_id
+}
+</script>
+ 
+<script type="application/shiny-prerendered" data-context="server">
+library(randomForest)
+
+output$distPlot <- renderPlot({
+  masked_id = input$masked_id
+  j = which(masked_ids == masked_id)
+  row_id = row_ids[[j]]
+  masked_id_fits = results[[j]]
+  
+  predictions = c()
+  for (i in 1:ncol(reshaped_df_norm)) {
+    predictions[i] = predict(masked_id_fits[[i]],reshaped_df_norm[row_id,])
+  }
+  errors = abs(predictions - as.vector(as.matrix(reshaped_df_norm[row_id,])))
+  
+  inxs = order(errors)
+  
+  hist(as.vector(errors[inxs]))
+})
+
+library(plotly)
+output$barPlot <- renderPlotly({
+  masked_id = input$masked_id
+  j = which(masked_ids == masked_id)
+  row_id = row_ids[[j]]
+  masked_id_fits = results[[j]]
+  
+  predictions = c()
+  for (i in 1:ncol(reshaped_df_norm)) {
+    predictions[i] = predict(masked_id_fits[[i]],reshaped_df_norm[row_id,])
+  }
+  errors = abs(predictions - as.vector(as.matrix(reshaped_df_norm[row_id,])))
+  
+  inxs = order(errors)
+  
+  plot_ly(
+    x = 100*as.vector(errors[inxs]),
+    y = factor(colnames(reshaped_df_norm)[inxs],levels = colnames(reshaped_df_norm)[inxs]),
+    name = "Errors",
+    type = "bar"
+  )
+})
+</script>
+ <!--html_preserve-->
+<script type="application/shiny-prerendered" data-context="dependencies">
+{"type":"list","attributes":{},"value":[{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","all_files","package"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["jquery"]},{"type":"character","attributes":{},"value":["1.11.3"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["rmd/h/jquery-1.11.3"]}]},{"type":"NULL","attributes":{},"value":{}},{"type":"character","attributes":{},"value":["jquery.min.js"]},{"type":"NULL","attributes":{},"value":{}},{"type":"NULL","attributes":{},"value":{}},{"type":"NULL","attributes":{},"value":{}},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["rmarkdown"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","all_files","package"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["bootstrap"]},{"type":"character","attributes":{},"value":["3.3.5"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["rmd/h/bootstrap-3.3.5"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["viewport"]}},"value":[{"type":"character","attributes":{},"value":["width=device-width, initial-scale=1"]}]},{"type":"character","attributes":{},"value":["js/bootstrap.min.js","shim/html5shiv.min.js","shim/respond.min.js"]},{"type":"character","attributes":{},"value":["css/bootstrap.min.css"]},{"type":"NULL","attributes":{},"value":{}},{"type":"NULL","attributes":{},"value":{}},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["rmarkdown"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","all_files","package"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["jquery"]},{"type":"character","attributes":{},"value":["1.11.3"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["rmd/h/jquery-1.11.3"]}]},{"type":"NULL","attributes":{},"value":{}},{"type":"character","attributes":{},"value":["jquery.min.js"]},{"type":"NULL","attributes":{},"value":{}},{"type":"NULL","attributes":{},"value":{}},{"type":"NULL","attributes":{},"value":{}},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["rmarkdown"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","all_files","package"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["navigation"]},{"type":"character","attributes":{},"value":["1.1"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["rmd/h/navigation-1.1"]}]},{"type":"NULL","attributes":{},"value":{}},{"type":"character","attributes":{},"value":["tabsets.js"]},{"type":"NULL","attributes":{},"value":{}},{"type":"NULL","attributes":{},"value":{}},{"type":"NULL","attributes":{},"value":{}},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["rmarkdown"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","all_files","package"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["highlightjs"]},{"type":"character","attributes":{},"value":["1.1"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["rmd/h/highlightjs-1.1"]}]},{"type":"NULL","attributes":{},"value":{}},{"type":"character","attributes":{},"value":["highlight.js"]},{"type":"character","attributes":{},"value":["default.css"]},{"type":"NULL","attributes":{},"value":{}},{"type":"NULL","attributes":{},"value":{}},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["rmarkdown"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","all_files"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["selectize"]},{"type":"character","attributes":{},"value":["0.11.2"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["href"]}},"value":[{"type":"character","attributes":{},"value":["shared/selectize"]}]},{"type":"NULL","attributes":{},"value":{}},{"type":"NULL","attributes":{},"value":{}},{"type":"character","attributes":{},"value":["css/selectize.bootstrap3.css"]},{"type":"character","attributes":{},"value":["<!--[if lt IE 9]>\n<script src=\"shared/selectize/js/es5-shim.min.js\"><\u002fscript>\n<![endif]-->\n<script src=\"shared/selectize/js/selectize.min.js\"><\u002fscript>"]},{"type":"NULL","attributes":{},"value":{}},{"type":"logical","attributes":{},"value":[true]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","all_files","package"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["htmlwidgets"]},{"type":"character","attributes":{},"value":["0.9"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["www"]}]},{"type":"NULL","attributes":{},"value":{}},{"type":"character","attributes":{},"value":["htmlwidgets.js"]},{"type":"NULL","attributes":{},"value":{}},{"type":"NULL","attributes":{},"value":{}},{"type":"NULL","attributes":{},"value":{}},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["htmlwidgets"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","all_files","package"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["plotly-binding"]},{"type":"character","attributes":{},"value":["4.7.1"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["htmlwidgets"]}]},{"type":"NULL","attributes":{},"value":{}},{"type":"character","attributes":{},"value":["plotly.js"]},{"type":"NULL","attributes":{},"value":{}},{"type":"NULL","attributes":{},"value":{}},{"type":"NULL","attributes":{},"value":{}},{"type":"logical","attributes":{},"value":[false]},{"type":"character","attributes":{},"value":["plotly"]}]}]}
+</script>
+<!--/html_preserve-->
+</div>
+
+
+
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+function bootstrapStylePandocTables() {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+}
+$(document).ready(function () {
+  bootstrapStylePandocTables();
+});
+
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
