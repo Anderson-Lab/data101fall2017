@@ -1,0 +1,100 @@
+---
+title: "week7"
+runtime: shiny
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Executables: 
+* Rewrite algorithm to rank users against each other
+    + use business interests research from week6
+    + try different ranking variable combinations to see how they compare
+    
+    ie:
+    masked_id  | sav_bal | checking_cnt | ... | loyalty_rank 
+    ------------- | ------------- | ------------- | ------------- | -------------
+    1  | 10 | 23 | ...| 16.5
+    2  | ... | ... | ... | ...
+    ... | ... | ... | ... | ...
+    
+* Scatterplot ranked users against other fields (ie.age) to look for corrlations 
+## Variables to rank
+* checking_acct_ct: WF makes money from account fees
+* savings_acct_ct: WF makes money from account fees
+* sav_bal_altered: WF makes money off of loans they give using the money customers keep in their savings accounts 
+* atm_withdrawals_cnt: WF makes money from atm fees and overdraft fees
+* online_bank_cnt: Research shows that customers are loyal to banks with usable web pages
+* direct_phone_cnt: Research shows that customers are loyal to banks that offer human interaction services
+## Variables to compare
+* age
+* tenure_altered
+* mortgage_flag
+* heloc_flag
+* personal_loan_flag
+* cc_flag
+* branch_visit_cnt
+* phone_banker_cnt
+## Import Data
+```{r}
+library(readxl)
+month_end_balances <- read_excel("/usr/local/Learn2Mine-Main/galaxy-dist/lesson_datasets/Fake+Data+and+Metadata+-+Final+no+pass.xlsx", 
+    sheet = "Month end balances ", col_types = c("numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric"))
+```
+## Select month of December 2016
+```{r}
+# create data frame to manipulate
+df <- data.frame(month_end_balances)
+# select only rows where asof_yyyymm = 201612
+df_12 <- df[df$asof_yyyymm==201612,]
+```
+## Rank Users by each variable
+```{r}
+# Rank by checking_acct_ct, savings_acct_ct, sav_bal_altered, atm_withdrawls_cnt, online_bank_cnt, direct_phone_cnt
+df_rank <- df_12
+df_rank$checking_acct_ct_rank <- rank(df_rank$checking_acct_ct, ties.method= "average")
+df_rank$savings_acct_ct_rank <- rank(df_rank$savings_acct_ct, ties.method= "average")
+df_rank$sav_bal_altered_rank <- rank(df_rank$sav_bal_altered, ties.method= "average")
+df_rank$atm_withdrawls_cnt_rank <- rank(df_rank$atm_withdrawls_cnt, ties.method= "average")
+df_rank$online_bank_cnt_rank <- rank(df_rank$online_bank_cnt, ties.method= "average")
+df_rank$direct_phone_cnt_rank <- rank(df_rank$direct_phone_cnt, ties.method= "average")
+# Take row average and store in Loyalty_num
+df_rank$loyalty_num <- rowMeans(df_rank[,c("checking_acct_ct_rank","savings_acct_ct_rank","sav_bal_altered_rank","atm_withdrawls_cnt_rank","online_bank_cnt_rank","direct_phone_cnt_rank")])
+# Rank Loyalty_num and store in Loyalty_rank
+df_rank$loyalty_rank <- rank(df_rank$loyalty_num, ties.method="average")
+```
+## Scatterplots
+These scatterplots are intended to show correlations between a customer's rank and other variables, if a correlation exists. None can be detected from the loyalty rank algorithm version 1.
+```{r}
+#
+library(ggplot2)
+ggplot(df_rank, aes(x=loyalty_rank, y=age)) + geom_point()
+ggplot(df_rank, aes(x=loyalty_rank, y=tenure_altered)) + geom_point()
+ggplot(df_rank, aes(x=loyalty_rank, y=mortgage_flag)) + geom_point()
+ggplot(df_rank, aes(x=loyalty_rank, y=heloc_flag)) + geom_point()
+ggplot(df_rank, aes(x=loyalty_rank, y=personal_loan_flag)) + geom_point()
+ggplot(df_rank, aes(x=loyalty_rank, y=cc_flag)) + geom_point()
+ggplot(df_rank, aes(x=loyalty_rank, y=branch_visit_cnt)) + geom_point()
+ggplot(df_rank, aes(x=loyalty_rank, y=phone_banker_cnt)) + geom_point()
+```
+## Prediction
+Error rate is way too high: 98%.
+```{r}
+library(randomForest)
+fit <- randomForest(as.factor(loyalty_rank) ~ age + tenure_altered + mortgage_flag + heloc_flag + personal_loan_flag + cc_flag + branch_visit_cnt + phone_banker_cnt,
+                      data=df_rank, 
+                      importance=TRUE, 
+                      ntree=2000)
+varImpPlot(fit)
+
+
+
